@@ -394,6 +394,9 @@ export default function App() {
         <AdminPanel 
           navigate={navigate} 
           salesData={salesData} 
+          setSalesData={setSalesData}
+          chassisRegistry={chassisRegistry}
+          setChassisRegistry={setChassisRegistry}
           flaggedData={flaggedData} 
           agents={agents}
           setAgents={setAgents}
@@ -734,13 +737,64 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
 /* =========================================
    3. ADMIN PANEL
    ========================================= */
-function AdminPanel({ navigate, salesData, flaggedData, agents, setAgents, showToast, generateAdminReportPDF, generateAgentReceiptPDF }) {
+function AdminPanel({ 
+  navigate, 
+  salesData, 
+  setSalesData, 
+  chassisRegistry, 
+  setChassisRegistry, 
+  flaggedData, 
+  agents, 
+  setAgents, 
+  showToast, 
+  generateAdminReportPDF, 
+  generateAgentReceiptPDF 
+}) {
   const [activeTab, setActiveTab] = useState('registry');
   const [newAgentName, setNewAgentName] = useState('');
   const [selectedChassisModal, setSelectedChassisModal] = useState(null);
 
   const totalValidSales = salesData.reduce((sum, item) => sum + item.validCount, 0);
   const totalFlags = flaggedData.length;
+
+  // New Feature: Action handler to remove a single chassis code by admin
+  const handleRemoveChassis = (recordId, codeToRemove) => {
+    // 1. Remove from local tracking object so the chassis can be used again
+    const updatedRegistry = { ...chassisRegistry };
+    delete updatedRegistry[codeToRemove];
+    setChassisRegistry(updatedRegistry);
+
+    // 2. Filter out code from salesData array and decrement valid counts globally
+    const updatedSalesData = salesData.map(record => {
+      if (record.id === recordId) {
+        const updatedCodes = record.codes.filter(code => code !== codeToRemove);
+        return {
+          ...record,
+          codes: updatedCodes,
+          validCount: updatedCodes.length
+        };
+      }
+      return record;
+    }).filter(record => record.validCount > 0); // Completely clears block if all chassis are removed
+
+    setSalesData(updatedSalesData);
+
+    // 3. Keep the open modal sync block updated in real time
+    if (selectedChassisModal && selectedChassisModal.id === recordId) {
+      const updatedModalCodes = selectedChassisModal.codes.filter(code => code !== codeToRemove);
+      if (updatedModalCodes.length === 0) {
+        setSelectedChassisModal(null); // Close modal if block contains no more codes
+      } else {
+        setSelectedChassisModal({
+          ...selectedChassisModal,
+          codes: updatedModalCodes,
+          validCount: updatedModalCodes.length
+        });
+      }
+    }
+
+    showToast(`Chassis ${codeToRemove} has been removed by Admin. Counts recalculated.`, 'info');
+  };
 
   const handleAddAgent = (e) => {
     e.preventDefault();
@@ -830,9 +884,19 @@ function AdminPanel({ navigate, salesData, flaggedData, agents, setAgents, showT
             <div className="p-5 overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {selectedChassisModal.codes.map((code, index) => (
-                  <div key={index} className="bg-[#0d0d12] border border-slate-800 p-3 rounded-lg flex items-center gap-3 hover:border-slate-600 transition-colors">
-                    <div className="w-6 h-6 rounded bg-slate-800 text-slate-400 flex items-center justify-center text-xs font-bold">{index + 1}</div>
-                    <span className="font-mono text-slate-200 tracking-wider text-sm">{code}</span>
+                  <div key={index} className="bg-[#0d0d12] border border-slate-800 p-3 rounded-lg flex items-center justify-between hover:border-slate-600 transition-colors group/item">
+                    <div className="flex items-center gap-3">
+                      <div className="w-6 h-6 rounded bg-slate-800 text-slate-400 flex items-center justify-center text-xs font-bold">{index + 1}</div>
+                      <span className="font-mono text-slate-200 tracking-wider text-sm">{code}</span>
+                    </div>
+                    {/* Integrated Remove Chassis Action Icon Button */}
+                    <button 
+                      onClick={() => handleRemoveChassis(selectedChassisModal.id, code)}
+                      className="p-2 bg-red-950/30 text-red-400 hover:text-red-200 hover:bg-red-900/60 rounded-lg border border-red-900/30 transition-all opacity-70 group-hover/item:opacity-100"
+                      title="Remove Chassis Code"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 ))}
               </div>
