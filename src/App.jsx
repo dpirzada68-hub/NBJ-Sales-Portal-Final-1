@@ -18,8 +18,27 @@ import {
   Eye,
   X,
   CalendarDays,
-  FileDown
+  FileDown,
+  Globe
 } from 'lucide-react';
+
+// Helper function to get correct flag image path based on market
+const getFlagSrc = (market) => {
+  if (market === 'uk') return 'uk-flag.jpg';
+  if (market === 'ireland') return 'ireland-flag.jpg';
+  if (market === 'mixed') return 'mixed-flag.png';
+  return null;
+};
+
+// Helper for loading images asynchronously for jsPDF
+const loadImageForPDF = (url) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+};
 
 export default function App() {
   // Global State — backed by a shared Neon Postgres database via /api/kv
@@ -27,7 +46,11 @@ export default function App() {
   const [salesData, setSalesData] = useState([]);
   const [flaggedData, setFlaggedData] = useState([]);
   const [chassisRegistry, setChassisRegistry] = useState({});
-  const [agents, setAgents] = useState(['Ali Khan', 'Sara Ahmed', 'Danish Pirzada']);
+  const [agents, setAgents] = useState([
+    { name: 'Ali Khan', market: 'uk' },
+    { name: 'Sara Ahmed', market: 'ireland' },
+    { name: 'Danish Pirzada', market: 'mixed' }
+  ]);
   const [dataLoaded, setDataLoaded] = useState(false);
 
   const [toast, setToast] = useState(null);
@@ -48,16 +71,23 @@ export default function App() {
     };
 
     (async () => {
-      const [sd, fd, cr, ag] = await Promise.all([
+      const [sd, fd, cr, agRaw] = await Promise.all([
         loadKey('nbj_sales_data', []),
         loadKey('nbj_flagged_data', []),
         loadKey('nbj_chassis_registry', {}),
-        loadKey('nbj_agents', ['Ali Khan', 'Sara Ahmed', 'Danish Pirzada']),
+        loadKey('nbj_agents', null),
       ]);
       setSalesData(sd);
       setFlaggedData(fd);
       setChassisRegistry(cr);
-      setAgents(ag);
+      
+      // Data format migration safety (string array to object array)
+      if (agRaw && agRaw.length > 0 && typeof agRaw[0] === 'string') {
+         setAgents(agRaw.map(name => ({ name, market: 'uk' })));
+      } else if (agRaw) {
+         setAgents(agRaw);
+      }
+      
       setDataLoaded(true);
     })();
   }, []);
@@ -111,7 +141,7 @@ export default function App() {
      PROGRAMMATIC CLIENT-SIDE PDF GENERATORS
      ========================================= */
 
-  const generateAgentReceiptPDF = (record) => {
+  const generateAgentReceiptPDF = async (record) => {
     if (!window.jspdf) {
       showToast("PDF Engine loading. Please try again in a few seconds.", "error");
       return;
@@ -132,6 +162,22 @@ export default function App() {
     doc.setFontSize(9);
     doc.setTextColor(220, 38, 38);
     doc.text("A U T O M O T I V E   W O R L D", 105, 29, { align: "center" });
+
+    // Inject Agent Market Flag (Top Right)
+    const agentObj = agents.find(a => a.name === record.agentName);
+    if (agentObj && agentObj.market) {
+      const flagUrl = getFlagSrc(agentObj.market);
+      if (flagUrl) {
+        const img = await loadImageForPDF(flagUrl);
+        if (img) {
+          const format = flagUrl.endsWith('.png') ? 'PNG' : 'JPEG';
+          doc.addImage(img, format, 175, 12, 20, 13);
+          doc.setFontSize(8);
+          doc.setTextColor(100, 116, 139);
+          doc.text(agentObj.market.toUpperCase() + " TEAM", 185, 28, { align: "center" });
+        }
+      }
+    }
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(12);
@@ -188,24 +234,34 @@ export default function App() {
     showToast("Receipt downloaded successfully!", "success");
   };
 
-  const generateAdminReportPDF = (filterMonth = 'all') => {
+  const generateAdminReportPDF = (filterMonth = 'all', filterTeam = 'all') => {
     if (!window.jspdf) {
       showToast("PDF Engine loading. Please try again.", "error");
       return;
     }
 
-    const reportData = filterMonth === 'all'
+    let reportData = filterMonth === 'all'
       ? salesData
       : salesData.filter(d => d.saleMonth === filterMonth);
 
+    // Apply Team Filter
+    if (filterTeam !== 'all') {
+      reportData = reportData.filter(d => {
+        const ag = agents.find(a => a.name === d.agentName);
+        return ag && ag.market === filterTeam;
+      });
+    }
+
     if (reportData.length === 0) {
-      showToast("Selected month ke liye koi sales record nahi mila!", "error");
+      showToast("Selected filters ke liye koi sales record nahi mila!", "error");
       return;
     }
 
     const monthLabel = filterMonth === 'all'
       ? 'All Months'
       : new Date(filterMonth + "-01").toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      
+    const teamLabel = filterTeam === 'all' ? 'All Teams' : filterTeam.toUpperCase() + ' Team';
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -227,7 +283,7 @@ export default function App() {
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
     doc.text(`Generated On: ${new Date().toLocaleString()}`, 15, 35);
-    doc.text(`Report Period: ${monthLabel}`, 130, 35);
+    doc.text(`Period: ${monthLabel}  |  Market: ${teamLabel}`, 100, 35);
 
     doc.setDrawColor(226, 232, 240);
     doc.line(15, 38, 195, 38);
@@ -235,7 +291,7 @@ export default function App() {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.setTextColor(17, 17, 21);
-    doc.text("1. Verified Sales Registry", 15, 46);
+    doc.text(`1. Verified Sales Registry (${teamLabel})`, 15, 46);
 
     const tableRows = [];
     reportData.forEach(data => {
@@ -271,13 +327,16 @@ export default function App() {
     doc.setTextColor(17, 17, 21);
     doc.text("2. Agent Performance Summary", 15, finalY + 15);
 
-    const summaryRows = agents.map(agent => {
-      const total = reportData.filter(s => s.agentName === agent).reduce((sum, item) => sum + item.validCount, 0);
-      return [agent, `${total} Units`];
+    // Filter agents for summary based on team filter
+    const summaryAgents = filterTeam === 'all' ? agents : agents.filter(a => a.market === filterTeam);
+
+    const summaryRows = summaryAgents.map(agent => {
+      const total = reportData.filter(s => s.agentName === agent.name).reduce((sum, item) => sum + item.validCount, 0);
+      return [agent.name, agent.market.toUpperCase(), `${total} Units`];
     });
 
     doc.autoTable({
-      head: [['AGENT NAME', 'TOTAL UNIQUE SALES']],
+      head: [['AGENT NAME', 'MARKET', 'TOTAL UNIQUE SALES']],
       body: summaryRows,
       startY: finalY + 20,
       theme: 'striped',
@@ -287,7 +346,7 @@ export default function App() {
     });
 
     const fileSuffix = filterMonth === 'all' ? new Date().toISOString().split('T')[0] : filterMonth;
-    doc.save(`NBJ_Master_Sales_Report_${fileSuffix}.pdf`);
+    doc.save(`NBJ_Master_Sales_Report_${filterTeam}_${fileSuffix}.pdf`);
     showToast("Master PDF Report downloaded successfully!", "success");
   };
 
@@ -330,7 +389,16 @@ export default function App() {
             <div className="p-6 space-y-4 text-sm text-slate-300">
               <div className="flex justify-between border-b border-slate-800/60 pb-2">
                 <span className="text-slate-400">Agent:</span>
-                <span className="font-bold text-white">{activeReceipt.agentName}</span>
+                <span className="font-bold text-white flex items-center gap-2">
+                  {activeReceipt.agentName}
+                  {agents.find(a => a.name === activeReceipt.agentName)?.market && (
+                     <img 
+                       src={getFlagSrc(agents.find(a => a.name === activeReceipt.agentName).market)} 
+                       alt="flag" 
+                       className="w-5 h-3 object-cover rounded-sm shadow-sm"
+                     />
+                  )}
+                </span>
               </div>
               <div className="flex justify-between border-b border-slate-800/60 pb-2">
                 <span className="text-slate-400">Month:</span>
@@ -663,9 +731,16 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
                   >
                     <option value="" disabled>Select your name</option>
                     {agents.map((agent, idx) => (
-                      <option key={idx} value={agent}>{agent}</option>
+                      <option key={idx} value={agent.name}>{agent.name}</option>
                     ))}
                   </select>
+                  {agentName && agents.find(a => a.name === agentName)?.market && (
+                    <img 
+                      src={getFlagSrc(agents.find(a => a.name === agentName).market)} 
+                      alt="flag" 
+                      className="absolute right-10 top-1/2 -translate-y-1/2 w-6 h-4 object-cover rounded-sm shadow-sm pointer-events-none"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -745,10 +820,13 @@ function AdminPanel({
 }) {
   const [activeTab, setActiveTab] = useState('registry');
   const [newAgentName, setNewAgentName] = useState('');
+  const [newAgentMarket, setNewAgentMarket] = useState('uk');
   const [selectedChassisModal, setSelectedChassisModal] = useState(null);
   
   // State for Sales Registry filter
   const [selectedMonth, setSelectedMonth] = useState('all');
+  const [teamFilter, setTeamFilter] = useState('all'); // Add team filter
+
   // State for Performance Stats / Analytics filter
   const [analyticsMonth, setAnalyticsMonth] = useState('all');
 
@@ -802,61 +880,74 @@ function AdminPanel({
   const handleAddAgent = (e) => {
     e.preventDefault();
     if (!newAgentName.trim()) return;
-    if (agents.includes(newAgentName.trim())) {
+    if (agents.some(a => a.name === newAgentName.trim())) {
       showToast('Agent already exists!', 'error');
       return;
     }
-    setAgents([...agents, newAgentName.trim()]);
+    setAgents([...agents, { name: newAgentName.trim(), market: newAgentMarket }]);
     setNewAgentName('');
     showToast('Agent added successfully!', 'success');
   };
 
   const handleRemoveAgent = (agentToRemove) => {
-    setAgents(agents.filter(a => a !== agentToRemove));
+    setAgents(agents.filter(a => a.name !== agentToRemove));
     showToast(`${agentToRemove} has been removed.`, 'info');
   };
 
   const exportToCSV = () => {
-    const reportData = selectedMonth === 'all'
+    let reportData = selectedMonth === 'all'
       ? salesData
       : salesData.filter(d => d.saleMonth === selectedMonth);
 
+    // Apply Team Filter to CSV
+    if (teamFilter !== 'all') {
+      reportData = reportData.filter(d => {
+        const ag = agents.find(a => a.name === d.agentName);
+        return ag && ag.market === teamFilter;
+      });
+    }
+
     if (reportData.length === 0) {
-      showToast('Selected month ke liye koi sales data nahi mila!', 'error');
+      showToast('Selected filters ke liye koi sales data nahi mila!', 'error');
       return;
     }
     
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "AGENT NAME,CHASSIS,MONTH OF SALES\n";
+    csvContent += "AGENT NAME,MARKET,CHASSIS,MONTH OF SALES\n";
 
     reportData.forEach(data => {
       let monthString = data.saleMonth ? new Date(data.saleMonth + "-01").toLocaleString('en-US', { month: 'long', year: 'numeric' }) : 'Not Specified';
+      const agentMarket = agents.find(a => a.name === data.agentName)?.market?.toUpperCase() || 'N/A';
+      
       data.codes.forEach(code => {
-        csvContent += `"${data.agentName}","${code}","${monthString}"\n`;
+        csvContent += `"${data.agentName}","${agentMarket}","${code}","${monthString}"\n`;
       });
     });
 
     csvContent += "\n\n";
     csvContent += "--- AGENT PERFORMANCE SUMMARY ---\n";
-    csvContent += "AGENT NAME,TOTAL SALES COUNT\n";
+    csvContent += "AGENT NAME,MARKET,TOTAL SALES COUNT\n";
     
-    agents.forEach(agent => {
-      const total = reportData.filter(s => s.agentName === agent).reduce((sum, item) => sum + item.validCount, 0);
-      csvContent += `"${agent}","${total}"\n`;
+    const summaryAgents = teamFilter === 'all' ? agents : agents.filter(a => a.market === teamFilter);
+
+    summaryAgents.forEach(agent => {
+      const total = reportData.filter(s => s.agentName === agent.name).reduce((sum, item) => sum + item.validCount, 0);
+      csvContent += `"${agent.name}","${agent.market.toUpperCase()}","${total}"\n`;
     });
     
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
     const fileSuffix = selectedMonth === 'all' ? new Date().toISOString().split('T')[0] : selectedMonth;
-    link.setAttribute("download", `NBJ_Sales_Report_${fileSuffix}.csv`);
+    link.setAttribute("download", `NBJ_Sales_Report_${teamFilter}_${fileSuffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Upgraded AgentStats using analyticsMonth state
-  const agentStats = agents.map(agent => {
+  // Agent Stats dynamically generated
+  const agentStats = agents.map(agentObj => {
+    const agent = agentObj.name;
     const filteredSales = analyticsMonth === 'all' 
       ? salesData 
       : salesData.filter(d => d.saleMonth === analyticsMonth);
@@ -868,10 +959,10 @@ function AdminPanel({
       if (f.attemptedBy !== agent) return false;
       if (analyticsMonth === 'all') return true;
       if (f.saleMonth) return f.saleMonth === analyticsMonth;
-      return f.date.startsWith(analyticsMonth); // Fallback for old data without saleMonth
+      return f.date.startsWith(analyticsMonth); // Fallback for old data
     }).length;
 
-    return { name: agent, valid: totalAgentValid, flags: agentFlags };
+    return { name: agent, market: agentObj.market, valid: totalAgentValid, flags: agentFlags };
   }).sort((a, b) => b.valid - a.valid);
 
   return (
@@ -996,6 +1087,24 @@ function AdminPanel({
             <div className="flex justify-between items-end flex-wrap gap-4">
               <h3 className="text-xl font-bold text-white">Current Sales Data</h3>
               <div className="flex gap-3 items-center flex-wrap">
+                
+                {/* Team Filter Dropdown */}
+                <div className="relative">
+                  <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+                  <select
+                    value={teamFilter}
+                    onChange={(e) => setTeamFilter(e.target.value)}
+                    title="Report ke liye team select karein"
+                    className="appearance-none bg-[#0d0d12] border border-slate-700 rounded-xl pl-10 pr-8 py-2.5 text-sm font-bold text-slate-200 focus:outline-none focus:border-red-500 shadow-inner cursor-pointer hover:border-slate-500 transition-colors"
+                  >
+                    <option value="all">All Teams</option>
+                    <option value="uk">UK Team</option>
+                    <option value="ireland">Ireland Team</option>
+                    <option value="mixed">Mixed Team</option>
+                  </select>
+                </div>
+
+                {/* Month Filter Dropdown */}
                 <div className="relative">
                   <CalendarDays className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
                   <select
@@ -1012,10 +1121,11 @@ function AdminPanel({
                     ))}
                   </select>
                 </div>
+
                 <button onClick={exportToCSV} className="bg-emerald-700 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold transition-all shadow-[0_5px_15px_rgba(4,120,87,0.3)] hover:shadow-[0_8px_20px_rgba(4,120,87,0.4)]">
-                  <Download size={18} /> Export Excel (CSV)
+                  <Download size={18} /> Export Excel
                 </button>
-                <button onClick={() => generateAdminReportPDF(selectedMonth)} className="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold transition-all shadow-[0_5px_15px_rgba(51,65,85,0.3)]">
+                <button onClick={() => generateAdminReportPDF(selectedMonth, teamFilter)} className="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold transition-all shadow-[0_5px_15px_rgba(51,65,85,0.3)]">
                   <Download size={18} /> Download Master PDF
                 </button>
               </div>
@@ -1040,14 +1150,25 @@ function AdminPanel({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
-                      {salesData.map((data) => {
+                      {salesData
+                        .filter(data => {
+                          if (teamFilter === 'all') return true;
+                          return agents.find(a => a.name === data.agentName)?.market === teamFilter;
+                        })
+                        .map((data) => {
                         let displayMonth = data.saleMonth ? new Date(data.saleMonth + "-01").toLocaleString('en-US', { month: 'short', year: 'numeric' }) : "N/A";
+                        let agentMarket = agents.find(a => a.name === data.agentName)?.market;
                         return (
                           <tr key={data.id} className="hover:bg-slate-800/30 transition-colors group">
                             <td className="p-5 text-sm text-slate-300 whitespace-nowrap">
                               {new Date(data.date).toLocaleDateString()} <span className="text-slate-500 text-xs ml-1 block mt-0.5">{new Date(data.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                             </td>
-                            <td className="p-5 text-sm font-bold text-white">{data.agentName}</td>
+                            <td className="p-5 text-sm font-bold text-white flex items-center gap-2 mt-1">
+                              {agentMarket && (
+                                <img src={getFlagSrc(agentMarket)} alt={agentMarket} className="w-5 h-3 object-cover rounded-sm border border-slate-700" />
+                              )}
+                              {data.agentName}
+                            </td>
                             <td className="p-5 text-sm text-blue-300 font-bold">{displayMonth}</td>
                             <td className="p-5">
                               <span className="bg-green-950/50 text-green-400 border border-green-800/50 px-3 py-1 rounded-full text-xs font-black">
@@ -1143,6 +1264,7 @@ function AdminPanel({
                 Register New Agent
               </h3>
               <form onSubmit={handleAddAgent} className="flex flex-col gap-4">
+                
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                   <input 
@@ -1153,7 +1275,21 @@ function AdminPanel({
                     className="w-full bg-[#0d0d12] border border-slate-700 rounded-xl pl-12 pr-4 py-3.5 text-white focus:outline-none focus:border-red-500 shadow-inner"
                   />
                 </div>
-                <button type="submit" className="bg-red-700 hover:bg-red-600 text-white w-full py-3.5 rounded-xl font-bold transition-all shadow-lg shadow-red-900/20 uppercase tracking-wider">
+                
+                <div className="relative">
+                  <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <select
+                    value={newAgentMarket}
+                    onChange={(e) => setNewAgentMarket(e.target.value)}
+                    className="w-full appearance-none bg-[#0d0d12] border border-slate-700 rounded-xl pl-12 pr-4 py-3.5 text-white focus:outline-none focus:border-red-500 shadow-inner cursor-pointer"
+                  >
+                    <option value="uk">UK Market</option>
+                    <option value="ireland">Ireland Market</option>
+                    <option value="mixed">Mixed Market (UK & Ireland)</option>
+                  </select>
+                </div>
+
+                <button type="submit" className="bg-red-700 hover:bg-red-600 text-white w-full py-3.5 rounded-xl font-bold transition-all shadow-lg shadow-red-900/20 uppercase tracking-wider mt-2">
                   Add Agent
                 </button>
               </form>
@@ -1170,8 +1306,18 @@ function AdminPanel({
                 ) : (
                   agents.map((agent, idx) => (
                     <li key={idx} className="p-4 px-5 flex justify-between items-center hover:bg-slate-800/40 transition-colors group">
-                      <span className="font-bold text-slate-200">{agent}</span>
-                      <button onClick={() => handleRemoveAgent(agent)} className="text-slate-500 hover:text-red-500 bg-slate-800 hover:bg-red-950/50 p-2 rounded-lg transition-all opacity-50 group-hover:opacity-100" title="Remove Agent">
+                      <span className="font-bold text-slate-200 flex items-center gap-3">
+                        {agent.market && (
+                           <img 
+                             src={getFlagSrc(agent.market)} 
+                             alt={agent.market} 
+                             className="w-6 h-4 object-cover rounded-sm shadow-sm border border-slate-700" 
+                             title={agent.market.toUpperCase()}
+                           />
+                        )}
+                        {agent.name}
+                      </span>
+                      <button onClick={() => handleRemoveAgent(agent.name)} className="text-slate-500 hover:text-red-500 bg-slate-800 hover:bg-red-950/50 p-2 rounded-lg transition-all opacity-50 group-hover:opacity-100" title="Remove Agent">
                         <Trash2 size={16} />
                       </button>
                     </li>
@@ -1215,13 +1361,22 @@ function AdminPanel({
                 <div key={idx} className="bg-[#0d0d12] border border-slate-700/80 rounded-2xl p-6 hover:border-red-900/50 transition-all relative overflow-hidden group shadow-lg hover:shadow-red-900/10">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-900/10 to-transparent rounded-bl-full -mr-4 -mt-4 group-hover:from-red-900/20 transition-colors"></div>
                   
-                  <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 mb-4 border border-slate-700">
-                    <User size={18} />
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 border border-slate-700 relative z-10">
+                      <User size={18} />
+                    </div>
+                    {stat.market && (
+                       <img 
+                         src={getFlagSrc(stat.market)} 
+                         alt={stat.market} 
+                         className="w-8 h-5 object-cover rounded shadow-sm border border-slate-700 relative z-10 mt-1" 
+                       />
+                    )}
                   </div>
 
-                  <h4 className="text-white font-black text-lg mb-6 truncate pr-6 tracking-wide" title={stat.name}>{stat.name}</h4>
+                  <h4 className="text-white font-black text-lg mb-6 truncate pr-2 tracking-wide" title={stat.name}>{stat.name}</h4>
                   
-                  <div className="flex justify-between items-end bg-slate-900/50 p-3 rounded-xl border border-slate-800/50">
+                  <div className="flex justify-between items-end bg-slate-900/50 p-3 rounded-xl border border-slate-800/50 relative z-10">
                     <div>
                       <p className="text-[10px] text-slate-500 mb-1 uppercase font-bold tracking-wider">Valid Sales</p>
                       <p className="text-2xl font-black text-emerald-500">{stat.valid}</p>
