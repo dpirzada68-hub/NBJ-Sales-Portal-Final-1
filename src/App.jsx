@@ -825,7 +825,7 @@ function AdminPanel({
   
   // State for Sales Registry filter
   const [selectedMonth, setSelectedMonth] = useState('all');
-  const [teamFilter, setTeamFilter] = useState('all'); // Add team filter
+  const [teamFilter, setTeamFilter] = useState('all');
 
   // State for Performance Stats / Analytics filter
   const [analyticsMonth, setAnalyticsMonth] = useState('all');
@@ -1358,32 +1358,48 @@ function AdminPanel({
             
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
               {agentStats.map((stat, idx) => (
-                <div key={idx} className="bg-[#0d0d12] border border-slate-700/80 rounded-2xl p-6 hover:border-red-900/50 transition-all relative overflow-hidden group shadow-lg hover:shadow-red-900/10">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-900/10 to-transparent rounded-bl-full -mr-4 -mt-4 group-hover:from-red-900/20 transition-colors"></div>
+                <div key={idx} className="bg-[#0d0d12] border border-slate-700/80 rounded-2xl p-6 hover:border-red-900/50 transition-all relative overflow-hidden group shadow-lg hover:shadow-red-900/20">
                   
-                  <div className="flex justify-between items-start mb-6">
-                    <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 border border-slate-700 relative z-10">
+                  {/* Background Flag Layer */}
+                  {stat.market && (
+                    <>
+                      <img 
+                        src={getFlagSrc(stat.market)} 
+                        alt={stat.market} 
+                        className="absolute inset-0 w-full h-full object-cover opacity-[0.12] group-hover:opacity-[0.25] transition-opacity duration-500 pointer-events-none scale-105 group-hover:scale-100" 
+                      />
+                      {/* Gradient Overlay for Text Readability */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#0d0d12] via-[#0d0d12]/80 to-transparent pointer-events-none"></div>
+                    </>
+                  )}
+
+                  {/* Top Right Red Glow */}
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-900/20 to-transparent rounded-bl-full -mr-4 -mt-4 group-hover:from-red-900/30 transition-colors pointer-events-none"></div>
+                  
+                  <div className="flex justify-between items-start mb-6 relative z-10">
+                    <div className="w-10 h-10 bg-slate-800/80 backdrop-blur-md rounded-full flex items-center justify-center text-slate-300 border border-slate-600 shadow-sm">
                       <User size={18} />
                     </div>
                     {stat.market && (
-                       <img 
-                         src={getFlagSrc(stat.market)} 
-                         alt={stat.market} 
-                         className="w-8 h-5 object-cover rounded shadow-sm border border-slate-700 relative z-10 mt-1" 
-                       />
+                       <div className="bg-[#0d0d12]/60 backdrop-blur-md px-2.5 py-1 rounded border border-slate-700/50 shadow-sm">
+                         <span className="text-[10px] uppercase font-black text-slate-300 tracking-widest">{stat.market}</span>
+                       </div>
                     )}
                   </div>
 
-                  <h4 className="text-white font-black text-lg mb-6 truncate pr-2 tracking-wide" title={stat.name}>{stat.name}</h4>
+                  <h4 className="text-white font-black text-lg mb-6 truncate pr-2 tracking-wide relative z-10 drop-shadow-md" title={stat.name}>
+                    {stat.name}
+                  </h4>
                   
-                  <div className="flex justify-between items-end bg-slate-900/50 p-3 rounded-xl border border-slate-800/50 relative z-10">
+                  {/* Stats Container with Blur */}
+                  <div className="flex justify-between items-end bg-[#0d0d12]/70 backdrop-blur-md p-3.5 rounded-xl border border-slate-700/50 relative z-10 shadow-inner">
                     <div>
-                      <p className="text-[10px] text-slate-500 mb-1 uppercase font-bold tracking-wider">Valid Sales</p>
-                      <p className="text-2xl font-black text-emerald-500">{stat.valid}</p>
+                      <p className="text-[10px] text-slate-400 mb-1 uppercase font-bold tracking-wider">Valid Sales</p>
+                      <p className="text-2xl font-black text-emerald-400 drop-shadow-sm">{stat.valid}</p>
                     </div>
                     <div className="text-right border-l border-slate-700/50 pl-4">
-                      <p className="text-[10px] text-slate-500 mb-1 uppercase font-bold tracking-wider">Duplicates</p>
-                      <p className="text-xl font-black text-red-500">{stat.flags}</p>
+                      <p className="text-[10px] text-slate-400 mb-1 uppercase font-bold tracking-wider">Duplicates</p>
+                      <p className="text-xl font-black text-red-400 drop-shadow-sm">{stat.flags}</p>
                     </div>
                   </div>
                 </div>
