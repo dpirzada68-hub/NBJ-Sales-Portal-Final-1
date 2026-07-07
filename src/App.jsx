@@ -22,8 +22,7 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  // Global State — now backed by a shared Neon Postgres database via /api/kv,
-  // instead of per-device localStorage.
+  // Global State — backed by a shared Neon Postgres database via /api/kv
   const [view, setView] = useState('landing'); // 'landing', 'admin-login', 'agent', 'admin'
   const [salesData, setSalesData] = useState([]);
   const [flaggedData, setFlaggedData] = useState([]);
@@ -32,7 +31,7 @@ export default function App() {
   const [dataLoaded, setDataLoaded] = useState(false);
 
   const [toast, setToast] = useState(null);
-  const [activeReceipt, setActiveReceipt] = useState(null); // Triggers success receipt modal
+  const [activeReceipt, setActiveReceipt] = useState(null); 
   const [pdfLibraryReady, setPdfLibraryReady] = useState(false);
 
   // Load all shared data from the database once, on first app load
@@ -63,7 +62,7 @@ export default function App() {
     })();
   }, []);
 
-  // Dynamically load jsPDF and jspdf-autotable to prevent sandboxed window.print() failures
+  // Dynamically load jsPDF
   useEffect(() => {
     if (!window.jspdf) {
       const jsPdfScript = document.createElement('script');
@@ -84,9 +83,7 @@ export default function App() {
     }
   }, []);
 
-  // Persist data to the shared database (skip the very first render, before
-  // the initial load above has finished, so we don't overwrite saved data
-  // with the empty defaults)
+  // Persist data to the shared database
   useEffect(() => {
     if (!dataLoaded) return;
     const saveKey = (key, value) => {
@@ -114,7 +111,6 @@ export default function App() {
      PROGRAMMATIC CLIENT-SIDE PDF GENERATORS
      ========================================= */
 
-  // 1. Agent Receipt PDF
   const generateAgentReceiptPDF = (record) => {
     if (!window.jspdf) {
       showToast("PDF Engine loading. Please try again in a few seconds.", "error");
@@ -124,11 +120,9 @@ export default function App() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
 
-    // Red Header accent block
     doc.setFillColor(220, 38, 38); 
     doc.rect(0, 0, 210, 8, 'F');
 
-    // Title Block
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
     doc.setTextColor(17, 17, 21);
@@ -144,11 +138,9 @@ export default function App() {
     doc.setTextColor(100, 116, 139);
     doc.text("AGENT SALES RECEIPT", 105, 37, { align: "center" });
 
-    // Decorative separator line
     doc.setDrawColor(226, 232, 240);
     doc.line(15, 42, 195, 42);
 
-    // Meta Details
     doc.setFontSize(10);
     doc.setTextColor(71, 85, 105);
     doc.text(`Receipt ID: #${record.id.toUpperCase()}`, 15, 50);
@@ -157,7 +149,6 @@ export default function App() {
     let monthString = record.saleMonth ? new Date(record.saleMonth + "-01").toLocaleString('en-US', { month: 'long', year: 'numeric' }) : 'N/A';
     doc.text(`Sales Month: ${monthString}`, 15, 62);
 
-    // Agent highlight box
     doc.setFillColor(248, 250, 252);
     doc.rect(15, 68, 180, 18, 'F');
     doc.setDrawColor(226, 232, 240);
@@ -168,13 +159,11 @@ export default function App() {
     doc.setTextColor(17, 17, 21);
     doc.text(`AGENT NAME: ${record.agentName.toUpperCase()}`, 20, 79);
 
-    // Chassis Header
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.setTextColor(220, 38, 38);
     doc.text(`Registered Chassis Codes (${record.validCount} Units Registered)`, 15, 96);
 
-    // Draw the Chassis List Table using AutoTable
     const tableBody = record.codes.map((code, idx) => [idx + 1, code, "Verified Unique & Secure"]);
     doc.autoTable({
       head: [['S.NO', 'CHASSIS NUMBER', 'STATUS']],
@@ -189,19 +178,16 @@ export default function App() {
       }
     });
 
-    // Add summary statement below
     const finalY = doc.lastAutoTable.finalY || 130;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
     doc.text("Thank you for your registration submission.", 105, finalY + 20, { align: "center" });
 
-    // Save as PDF
     doc.save(`NBJ_Receipt_${record.agentName.replace(/\s+/g, '_')}_${record.id.toUpperCase()}.pdf`);
     showToast("Receipt downloaded successfully!", "success");
   };
 
-  // 2. Master Admin PDF Report
   const generateAdminReportPDF = () => {
     if (!window.jspdf) {
       showToast("PDF Engine loading. Please try again.", "error");
@@ -211,11 +197,9 @@ export default function App() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
 
-    // Red Header accent block
     doc.setFillColor(220, 38, 38); 
     doc.rect(0, 0, 210, 8, 'F');
 
-    // Title Block
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
     doc.setTextColor(17, 17, 21);
@@ -231,7 +215,6 @@ export default function App() {
     doc.setTextColor(100, 116, 139);
     doc.text(`Generated On: ${new Date().toLocaleString()}`, 15, 35);
 
-    // Decorative Separator
     doc.setDrawColor(226, 232, 240);
     doc.line(15, 38, 195, 38);
 
@@ -240,7 +223,6 @@ export default function App() {
     doc.setTextColor(17, 17, 21);
     doc.text("1. Verified Sales Registry", 15, 46);
 
-    // Flatten sales lists
     const tableRows = [];
     salesData.forEach(data => {
       let monthString = data.saleMonth ? new Date(data.saleMonth + "-01").toLocaleString('en-US', { month: 'long', year: 'numeric' }) : 'N/A';
@@ -255,7 +237,6 @@ export default function App() {
       });
     });
 
-    // Sales table
     doc.autoTable({
       head: [['S.NO', 'AGENT NAME', 'CHASSIS NUMBER', 'MONTH OF SALES', 'ENTRY DATE']],
       body: tableRows,
@@ -271,7 +252,6 @@ export default function App() {
 
     const finalY = doc.lastAutoTable.finalY || 70;
 
-    // Agent Summaries Section
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.setTextColor(17, 17, 21);
@@ -289,7 +269,7 @@ export default function App() {
       theme: 'striped',
       headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255] },
       styles: { fontSize: 9 },
-      margin: { right: 80 } // Compact right side layout
+      margin: { right: 80 } 
     });
 
     doc.save(`NBJ_Master_Sales_Report_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -312,6 +292,7 @@ export default function App() {
         <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.5)] border flex items-center gap-3 transition-all animate-in fade-in slide-in-from-top-5 backdrop-blur-md bg-slate-800/90 border-slate-600 text-slate-200">
           {toast.type === 'error' && <AlertTriangle size={18} className="text-red-500" />}
           {toast.type === 'success' && <CheckCircle size={18} className="text-green-500" />}
+          {toast.type === 'info' && <AlertTriangle size={18} className="text-blue-400" />}
           <span className="font-medium text-sm tracking-wide">{toast.message}</span>
         </div>
       )}
@@ -398,6 +379,7 @@ export default function App() {
           chassisRegistry={chassisRegistry}
           setChassisRegistry={setChassisRegistry}
           flaggedData={flaggedData} 
+          setFlaggedData={setFlaggedData} // Passed the setFlaggedData function
           agents={agents}
           setAgents={setAgents}
           showToast={showToast}
@@ -552,7 +534,6 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
       return;
     }
 
-    // Parse chassis codes strictly
     const rawCodes = chassisInput.split(/[\n,]+/).map(c => c.trim().toUpperCase()).filter(c => c);
     
     if (rawCodes.length === 0) {
@@ -606,12 +587,9 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
       };
 
       setSalesData(prev => [newSaleRecord, ...prev]);
-
-      // Trigger automatic pop-up receipt receipt details
       setActiveReceipt(newSaleRecord);
     }
 
-    // Feedback
     if (newFlags.length === rawCodes.length) {
       showToast('Submission Failed: All entered codes were flagged as duplicates.', 'error');
     } else if (newFlags.length > 0) {
@@ -620,7 +598,6 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
       showToast('Sales successfully registered!', 'success');
     }
 
-    // Reset Form if at least one succeeded
     if (validCodes.length > 0) {
       setChassisInput('');
       setSaleCount('');
@@ -744,6 +721,7 @@ function AdminPanel({
   chassisRegistry, 
   setChassisRegistry, 
   flaggedData, 
+  setFlaggedData, 
   agents, 
   setAgents, 
   showToast, 
@@ -757,14 +735,11 @@ function AdminPanel({
   const totalValidSales = salesData.reduce((sum, item) => sum + item.validCount, 0);
   const totalFlags = flaggedData.length;
 
-  // New Feature: Action handler to remove a single chassis code by admin
   const handleRemoveChassis = (recordId, codeToRemove) => {
-    // 1. Remove from local tracking object so the chassis can be used again
     const updatedRegistry = { ...chassisRegistry };
     delete updatedRegistry[codeToRemove];
     setChassisRegistry(updatedRegistry);
 
-    // 2. Filter out code from salesData array and decrement valid counts globally
     const updatedSalesData = salesData.map(record => {
       if (record.id === recordId) {
         const updatedCodes = record.codes.filter(code => code !== codeToRemove);
@@ -775,15 +750,14 @@ function AdminPanel({
         };
       }
       return record;
-    }).filter(record => record.validCount > 0); // Completely clears block if all chassis are removed
+    }).filter(record => record.validCount > 0); 
 
     setSalesData(updatedSalesData);
 
-    // 3. Keep the open modal sync block updated in real time
     if (selectedChassisModal && selectedChassisModal.id === recordId) {
       const updatedModalCodes = selectedChassisModal.codes.filter(code => code !== codeToRemove);
       if (updatedModalCodes.length === 0) {
-        setSelectedChassisModal(null); // Close modal if block contains no more codes
+        setSelectedChassisModal(null); 
       } else {
         setSelectedChassisModal({
           ...selectedChassisModal,
@@ -794,6 +768,13 @@ function AdminPanel({
     }
 
     showToast(`Chassis ${codeToRemove} has been removed by Admin. Counts recalculated.`, 'info');
+  };
+
+  // NEW FEATURE: Remove Flagged Record Function
+  const handleRemoveFlagged = (indexToRemove) => {
+    const updatedFlags = flaggedData.filter((_, idx) => idx !== indexToRemove);
+    setFlaggedData(updatedFlags);
+    showToast('Flagged record has been permanently removed.', 'info');
   };
 
   const handleAddAgent = (e) => {
@@ -813,14 +794,12 @@ function AdminPanel({
     showToast(`${agentToRemove} has been removed.`, 'info');
   };
 
-  // Highly Customized CSV Export to match the requested Image Format + Summary Footer
   const exportToCSV = () => {
     if (salesData.length === 0) {
       showToast('No data available to export!', 'error');
       return;
     }
     
-    // Core Headers
     let csvContent = "data:text/csv;charset=utf-8,";
     csvContent += "AGENT NAME,CHASSIS,MONTH OF SALES\n";
 
@@ -831,10 +810,7 @@ function AdminPanel({
       });
     });
 
-    // Add Spacing before Footer
     csvContent += "\n\n";
-    
-    // Add Summary Footer
     csvContent += "--- AGENT PERFORMANCE SUMMARY ---\n";
     csvContent += "AGENT NAME,TOTAL SALES COUNT\n";
     
@@ -889,7 +865,6 @@ function AdminPanel({
                       <div className="w-6 h-6 rounded bg-slate-800 text-slate-400 flex items-center justify-center text-xs font-bold">{index + 1}</div>
                       <span className="font-mono text-slate-200 tracking-wider text-sm">{code}</span>
                     </div>
-                    {/* Integrated Remove Chassis Action Icon Button */}
                     <button 
                       onClick={() => handleRemoveChassis(selectedChassisModal.id, code)}
                       className="p-2 bg-red-950/30 text-red-400 hover:text-red-200 hover:bg-red-900/60 rounded-lg border border-red-900/30 transition-all opacity-70 group-hover/item:opacity-100"
@@ -1061,11 +1036,12 @@ function AdminPanel({
                       <th className="p-5 font-bold text-red-400">Duplicate Chassis</th>
                       <th className="p-5 font-bold">Original Owner</th>
                       <th className="p-5 font-bold">Reason</th>
+                      <th className="p-5 font-bold text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
                     {flaggedData.map((flag, idx) => (
-                      <tr key={idx} className="hover:bg-red-900/10 transition-colors">
+                      <tr key={idx} className="hover:bg-red-900/10 transition-colors group/flag">
                         <td className="p-5 text-sm text-slate-300 whitespace-nowrap">
                           {new Date(flag.date).toLocaleDateString()} <span className="text-slate-500 text-xs ml-1 block mt-0.5">{new Date(flag.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                         </td>
@@ -1085,6 +1061,15 @@ function AdminPanel({
                           )}
                         </td>
                         <td className="p-5 text-xs font-bold text-slate-400">{flag.reason}</td>
+                        <td className="p-5 text-right">
+                          <button
+                            onClick={() => handleRemoveFlagged(idx)}
+                            className="p-2 bg-red-950/30 text-red-400 hover:text-red-200 hover:bg-red-900/60 rounded-lg border border-red-900/30 transition-all opacity-50 hover:opacity-100 group-hover/flag:opacity-100"
+                            title="Remove Flagged Chassis"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
