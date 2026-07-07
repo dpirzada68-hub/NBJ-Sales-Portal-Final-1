@@ -188,11 +188,24 @@ export default function App() {
     showToast("Receipt downloaded successfully!", "success");
   };
 
-  const generateAdminReportPDF = () => {
+  const generateAdminReportPDF = (filterMonth = 'all') => {
     if (!window.jspdf) {
       showToast("PDF Engine loading. Please try again.", "error");
       return;
     }
+
+    const reportData = filterMonth === 'all'
+      ? salesData
+      : salesData.filter(d => d.saleMonth === filterMonth);
+
+    if (reportData.length === 0) {
+      showToast("Selected month ke liye koi sales record nahi mila!", "error");
+      return;
+    }
+
+    const monthLabel = filterMonth === 'all'
+      ? 'All Months'
+      : new Date(filterMonth + "-01").toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -214,6 +227,7 @@ export default function App() {
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
     doc.text(`Generated On: ${new Date().toLocaleString()}`, 15, 35);
+    doc.text(`Report Period: ${monthLabel}`, 130, 35);
 
     doc.setDrawColor(226, 232, 240);
     doc.line(15, 38, 195, 38);
@@ -224,7 +238,7 @@ export default function App() {
     doc.text("1. Verified Sales Registry", 15, 46);
 
     const tableRows = [];
-    salesData.forEach(data => {
+    reportData.forEach(data => {
       let monthString = data.saleMonth ? new Date(data.saleMonth + "-01").toLocaleString('en-US', { month: 'long', year: 'numeric' }) : 'N/A';
       data.codes.forEach(code => {
         tableRows.push([
@@ -258,7 +272,7 @@ export default function App() {
     doc.text("2. Agent Performance Summary", 15, finalY + 15);
 
     const summaryRows = agents.map(agent => {
-      const total = salesData.filter(s => s.agentName === agent).reduce((sum, item) => sum + item.validCount, 0);
+      const total = reportData.filter(s => s.agentName === agent).reduce((sum, item) => sum + item.validCount, 0);
       return [agent, `${total} Units`];
     });
 
@@ -272,7 +286,8 @@ export default function App() {
       margin: { right: 80 } 
     });
 
-    doc.save(`NBJ_Master_Sales_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    const fileSuffix = filterMonth === 'all' ? new Date().toISOString().split('T')[0] : filterMonth;
+    doc.save(`NBJ_Master_Sales_Report_${fileSuffix}.pdf`);
     showToast("Master PDF Report downloaded successfully!", "success");
   };
 
@@ -379,7 +394,7 @@ export default function App() {
           chassisRegistry={chassisRegistry}
           setChassisRegistry={setChassisRegistry}
           flaggedData={flaggedData} 
-          setFlaggedData={setFlaggedData} // Passed the setFlaggedData function
+          setFlaggedData={setFlaggedData} 
           agents={agents}
           setAgents={setAgents}
           showToast={showToast}
@@ -554,12 +569,12 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
       if (currentSubmissionRegistry.has(code)) {
         newFlags.push({
           code, attemptedBy: agentName, originalOwner: agentName, 
-          date: new Date().toISOString(), reason: 'Duplicate in current submission block'
+          date: new Date().toISOString(), saleMonth, reason: 'Duplicate in current submission block'
         });
       } else if (chassisRegistry[code]) {
         newFlags.push({
           code, attemptedBy: agentName, originalOwner: chassisRegistry[code],
-          date: new Date().toISOString(), reason: 'Chassis already registered in database'
+          date: new Date().toISOString(), saleMonth, reason: 'Chassis already registered in database'
         });
       } else {
         validCodes.push(code);
@@ -731,6 +746,14 @@ function AdminPanel({
   const [activeTab, setActiveTab] = useState('registry');
   const [newAgentName, setNewAgentName] = useState('');
   const [selectedChassisModal, setSelectedChassisModal] = useState(null);
+  
+  // State for Sales Registry filter
+  const [selectedMonth, setSelectedMonth] = useState('all');
+  // State for Performance Stats / Analytics filter
+  const [analyticsMonth, setAnalyticsMonth] = useState('all');
+
+  // Unique list of months present in sales data, newest first
+  const availableMonths = [...new Set(salesData.map(d => d.saleMonth).filter(Boolean))].sort().reverse();
 
   const totalValidSales = salesData.reduce((sum, item) => sum + item.validCount, 0);
   const totalFlags = flaggedData.length;
@@ -770,7 +793,6 @@ function AdminPanel({
     showToast(`Chassis ${codeToRemove} has been removed by Admin. Counts recalculated.`, 'info');
   };
 
-  // NEW FEATURE: Remove Flagged Record Function
   const handleRemoveFlagged = (indexToRemove) => {
     const updatedFlags = flaggedData.filter((_, idx) => idx !== indexToRemove);
     setFlaggedData(updatedFlags);
@@ -795,15 +817,19 @@ function AdminPanel({
   };
 
   const exportToCSV = () => {
-    if (salesData.length === 0) {
-      showToast('No data available to export!', 'error');
+    const reportData = selectedMonth === 'all'
+      ? salesData
+      : salesData.filter(d => d.saleMonth === selectedMonth);
+
+    if (reportData.length === 0) {
+      showToast('Selected month ke liye koi sales data nahi mila!', 'error');
       return;
     }
     
     let csvContent = "data:text/csv;charset=utf-8,";
     csvContent += "AGENT NAME,CHASSIS,MONTH OF SALES\n";
 
-    salesData.forEach(data => {
+    reportData.forEach(data => {
       let monthString = data.saleMonth ? new Date(data.saleMonth + "-01").toLocaleString('en-US', { month: 'long', year: 'numeric' }) : 'Not Specified';
       data.codes.forEach(code => {
         csvContent += `"${data.agentName}","${code}","${monthString}"\n`;
@@ -815,23 +841,36 @@ function AdminPanel({
     csvContent += "AGENT NAME,TOTAL SALES COUNT\n";
     
     agents.forEach(agent => {
-      const total = salesData.filter(s => s.agentName === agent).reduce((sum, item) => sum + item.validCount, 0);
+      const total = reportData.filter(s => s.agentName === agent).reduce((sum, item) => sum + item.validCount, 0);
       csvContent += `"${agent}","${total}"\n`;
     });
     
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `NBJ_Sales_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    const fileSuffix = selectedMonth === 'all' ? new Date().toISOString().split('T')[0] : selectedMonth;
+    link.setAttribute("download", `NBJ_Sales_Report_${fileSuffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  // Upgraded AgentStats using analyticsMonth state
   const agentStats = agents.map(agent => {
-    const agentSales = salesData.filter(s => s.agentName === agent);
+    const filteredSales = analyticsMonth === 'all' 
+      ? salesData 
+      : salesData.filter(d => d.saleMonth === analyticsMonth);
+
+    const agentSales = filteredSales.filter(s => s.agentName === agent);
     const totalAgentValid = agentSales.reduce((sum, item) => sum + item.validCount, 0);
-    const agentFlags = flaggedData.filter(f => f.attemptedBy === agent).length;
+    
+    const agentFlags = flaggedData.filter(f => {
+      if (f.attemptedBy !== agent) return false;
+      if (analyticsMonth === 'all') return true;
+      if (f.saleMonth) return f.saleMonth === analyticsMonth;
+      return f.date.startsWith(analyticsMonth); // Fallback for old data without saleMonth
+    }).length;
+
     return { name: agent, valid: totalAgentValid, flags: agentFlags };
   }).sort((a, b) => b.valid - a.valid);
 
@@ -954,13 +993,29 @@ function AdminPanel({
         {/* Content: Registry */}
         {activeTab === 'registry' && (
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex justify-between items-end">
+            <div className="flex justify-between items-end flex-wrap gap-4">
               <h3 className="text-xl font-bold text-white">Current Sales Data</h3>
-              <div className="flex gap-3">
+              <div className="flex gap-3 items-center flex-wrap">
+                <div className="relative">
+                  <CalendarDays className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    title="Report ke liye month chunein"
+                    className="appearance-none bg-[#0d0d12] border border-slate-700 rounded-xl pl-10 pr-8 py-2.5 text-sm font-bold text-slate-200 focus:outline-none focus:border-red-500 shadow-inner cursor-pointer hover:border-slate-500 transition-colors"
+                  >
+                    <option value="all">All Months</option>
+                    {availableMonths.map(m => (
+                      <option key={m} value={m}>
+                        {new Date(m + "-01").toLocaleString('en-US', { month: 'long', year: 'numeric' })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <button onClick={exportToCSV} className="bg-emerald-700 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold transition-all shadow-[0_5px_15px_rgba(4,120,87,0.3)] hover:shadow-[0_8px_20px_rgba(4,120,87,0.4)]">
                   <Download size={18} /> Export Excel (CSV)
                 </button>
-                <button onClick={generateAdminReportPDF} className="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold transition-all shadow-[0_5px_15px_rgba(51,65,85,0.3)]">
+                <button onClick={() => generateAdminReportPDF(selectedMonth)} className="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold transition-all shadow-[0_5px_15px_rgba(51,65,85,0.3)]">
                   <Download size={18} /> Download Master PDF
                 </button>
               </div>
@@ -1130,10 +1185,30 @@ function AdminPanel({
         {/* Content: Analytics */}
         {activeTab === 'analytics' && (
           <div className="bg-[#16161f] border border-slate-800 rounded-2xl p-8 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-3">
-              <div className="p-2 bg-slate-800 rounded text-blue-500"><TrendingUp size={20} /></div>
-              Agent Performance Overview
-            </h3>
+            <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
+              <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                <div className="p-2 bg-slate-800 rounded text-blue-500"><TrendingUp size={20} /></div>
+                Agent Performance Overview
+              </h3>
+              
+              {/* Analytics Month Filter */}
+              <div className="relative">
+                <CalendarDays className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+                <select
+                  value={analyticsMonth}
+                  onChange={(e) => setAnalyticsMonth(e.target.value)}
+                  title="Select Month for Performance Analytics"
+                  className="appearance-none bg-[#0d0d12] border border-slate-700 rounded-xl pl-10 pr-8 py-2.5 text-sm font-bold text-slate-200 focus:outline-none focus:border-red-500 shadow-inner cursor-pointer hover:border-slate-500 transition-colors"
+                >
+                  <option value="all">All Time Stats</option>
+                  {availableMonths.map(m => (
+                    <option key={m} value={m}>
+                      {new Date(m + "-01").toLocaleString('en-US', { month: 'long', year: 'numeric' })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
               {agentStats.map((stat, idx) => (
