@@ -549,7 +549,7 @@ function AdminLogin({ navigate, showToast }) {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (password === 'Ubaid-m-nbj123') {
+    if (password === 'ubaid7894') {
       showToast('Authentication Successful!', 'success');
       navigate('admin');
     } else {
