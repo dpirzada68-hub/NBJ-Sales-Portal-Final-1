@@ -40,6 +40,22 @@ const loadImageForPDF = (url) => {
   });
 };
 
+// Normalizes a chassisRegistry entry. Supports legacy entries that were
+// stored as a plain agentName string (before saleMonth tracking existed).
+const getRegistryEntry = (entry) => {
+  if (!entry) return null;
+  if (typeof entry === 'string') {
+    return { agentName: entry, saleMonth: null };
+  }
+  return entry;
+};
+
+// Formats a 'YYYY-MM' string into a readable "Month Year" label
+const formatSaleMonth = (saleMonth) => {
+  if (!saleMonth) return null;
+  return new Date(saleMonth + "-01").toLocaleString('en-US', { month: 'long', year: 'numeric' });
+};
+
 export default function App() {
   // Global State — backed by a shared Neon Postgres database via /api/kv
   const [view, setView] = useState('landing'); // 'landing', 'admin-login', 'agent', 'admin'
@@ -637,12 +653,17 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
       if (currentSubmissionRegistry.has(code)) {
         newFlags.push({
           code, attemptedBy: agentName, originalOwner: agentName, 
-          date: new Date().toISOString(), saleMonth, reason: 'Duplicate in current submission block'
+          date: new Date().toISOString(), saleMonth, 
+          originalMonth: saleMonth, // both entries belong to this same submission
+          reason: 'Duplicate in current submission block'
         });
       } else if (chassisRegistry[code]) {
+        const existingEntry = getRegistryEntry(chassisRegistry[code]);
         newFlags.push({
-          code, attemptedBy: agentName, originalOwner: chassisRegistry[code],
-          date: new Date().toISOString(), saleMonth, reason: 'Chassis already registered in database'
+          code, attemptedBy: agentName, originalOwner: existingEntry.agentName,
+          date: new Date().toISOString(), saleMonth, 
+          originalMonth: existingEntry.saleMonth, // month the chassis was first registered
+          reason: 'Chassis already registered in database'
         });
       } else {
         validCodes.push(code);
@@ -656,7 +677,7 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
 
     if (validCodes.length > 0) {
       const registryUpdates = {};
-      validCodes.forEach(code => { registryUpdates[code] = agentName; });
+      validCodes.forEach(code => { registryUpdates[code] = { agentName, saleMonth }; });
       setChassisRegistry(prev => ({ ...prev, ...registryUpdates }));
 
       const newSaleRecord = {
@@ -1211,6 +1232,7 @@ function AdminPanel({
                       <th className="p-5 font-bold">Attempted By</th>
                       <th className="p-5 font-bold text-red-400">Duplicate Chassis</th>
                       <th className="p-5 font-bold">Original Owner</th>
+                      <th className="p-5 font-bold">Originally Registered</th>
                       <th className="p-5 font-bold">Reason</th>
                       <th className="p-5 font-bold text-right">Action</th>
                     </tr>
@@ -1234,6 +1256,16 @@ function AdminPanel({
                              </span>
                           ) : (
                             <span className="text-emerald-400 font-bold">{flag.originalOwner}</span>
+                          )}
+                        </td>
+                        <td className="p-5 text-sm">
+                          {flag.originalMonth ? (
+                            <span className="flex items-center gap-1.5 text-slate-300 font-bold">
+                              <CalendarDays size={14} className="text-slate-500" />
+                              {formatSaleMonth(flag.originalMonth)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-600 italic text-xs">Unknown (legacy record)</span>
                           )}
                         </td>
                         <td className="p-5 text-xs font-bold text-slate-400">{flag.reason}</td>
