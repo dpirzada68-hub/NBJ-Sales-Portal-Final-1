@@ -106,7 +106,46 @@ function GlobalStyles() {
         100% { transform: translateX(120%); }
       }
       .animate-nbj-shimmer { animation: nbj-shimmer 2.5s ease-in-out infinite; }
+
+      @keyframes nbj-float-particle {
+        0%   { transform: translateY(0) translateX(0); opacity: 0; }
+        10%  { opacity: 0.7; }
+        90%  { opacity: 0.5; }
+        100% { transform: translateY(-140px) translateX(16px); opacity: 0; }
+      }
+      .animate-nbj-float-particle { animation: nbj-float-particle 7s ease-in infinite; }
+
+      @keyframes nbj-border-glow {
+        0%, 100% { box-shadow: 0 0 0px rgba(220,38,38,0); }
+        50%      { box-shadow: 0 0 30px rgba(220,38,38,0.18); }
+      }
+      .animate-nbj-border-glow { animation: nbj-border-glow 4.5s ease-in-out infinite; }
+
+      @keyframes nbj-icon-pulse {
+        0%, 100% { opacity: 0.7; transform: scale(1); }
+        50%      { opacity: 1; transform: scale(1.08); }
+      }
+      .animate-nbj-icon-pulse { animation: nbj-icon-pulse 3s ease-in-out infinite; }
     `}} />
+  );
+}
+
+// Reusable ambient background: drifting glows + faint grid, used behind
+// content on every screen for a cohesive, premium feel. Fully non-interactive.
+function AmbientBackground({ intensity = 'normal' }) {
+  const glowOpacity = intensity === 'subtle' ? 'opacity-60' : 'opacity-100';
+  return (
+    <div className={`absolute inset-0 overflow-hidden pointer-events-none ${glowOpacity}`}>
+      <div className="absolute top-1/4 -left-20 w-[500px] h-[500px] bg-red-900/10 rounded-full blur-[120px] animate-nbj-drift"></div>
+      <div className="absolute bottom-0 right-0 w-[450px] h-[450px] bg-red-700/[0.06] rounded-full blur-[110px] animate-nbj-drift-reverse"></div>
+      <div 
+        className="absolute inset-0 opacity-[0.025]"
+        style={{
+          backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
+          backgroundSize: '46px 46px'
+        }}
+      ></div>
+    </div>
   );
 }
 
@@ -237,16 +276,33 @@ export default function App() {
     const agentObj = agents.find(a => a.name === record.agentName);
     if (agentObj && agentObj.market) {
       const flagUrl = getFlagSrc(agentObj.market);
+      let img = null;
       if (flagUrl) {
-        const img = await loadImageForPDF(flagUrl);
-        if (img) {
-          const format = flagUrl.endsWith('.png') ? 'PNG' : 'JPEG';
-          doc.addImage(img, format, 175, 12, 20, 13);
-          doc.setFontSize(8);
-          doc.setTextColor(100, 116, 139);
-          doc.text(agentObj.market.toUpperCase() + " TEAM", 185, 28, { align: "center" });
+        img = await loadImageForPDF(flagUrl);
+        // Some deployments serve assets from a case-sensitive filesystem (e.g. Vercel/Linux)
+        // while local dev on Windows/Mac is case-insensitive — retry with alternate casing
+        // so a mismatched filename doesn't silently drop the flag (this was breaking UK).
+        if (!img) {
+          const altUrl = flagUrl.charAt(0).toUpperCase() + flagUrl.slice(1);
+          img = await loadImageForPDF(altUrl);
+        }
+        if (!img) {
+          img = await loadImageForPDF(flagUrl.toLowerCase());
         }
       }
+      if (img) {
+        const format = flagUrl.toLowerCase().endsWith('.png') ? 'PNG' : 'JPEG';
+        doc.addImage(img, format, 175, 12, 20, 13);
+      } else {
+        // Flag image unavailable for any reason — draw a neutral badge so the
+        // team label never ends up printing on an empty/broken spot.
+        doc.setFillColor(30, 41, 59);
+        doc.roundedRect(175, 12, 20, 13, 2, 2, 'F');
+      }
+      // Team label is no longer gated on the image loading — it always prints.
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(agentObj.market.toUpperCase() + " TEAM", 185, 28, { align: "center" });
     }
 
     doc.setFont("helvetica", "normal");
@@ -575,6 +631,7 @@ function LandingPage({ navigate }) {
       {/* Ambient drifting glows */}
       <div className="absolute top-1/3 left-1/4 w-[650px] h-[650px] bg-red-900/20 rounded-full blur-[130px] pointer-events-none animate-nbj-drift"></div>
       <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-red-700/10 rounded-full blur-[110px] pointer-events-none animate-nbj-drift-reverse"></div>
+      <div className="absolute top-10 right-10 w-64 h-64 bg-red-800/10 rounded-full blur-[90px] pointer-events-none animate-nbj-drift" style={{animationDuration: '10s'}}></div>
 
       {/* Faint blueprint grid, evokes engineering/export precision */}
       <div 
@@ -585,6 +642,22 @@ function LandingPage({ navigate }) {
         }}
       ></div>
 
+      {/* Floating dust / harbor-light particles, drift upward continuously */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {[...Array(8)].map((_, i) => (
+          <span 
+            key={i}
+            className="absolute w-1 h-1 rounded-full bg-red-500 animate-nbj-float-particle"
+            style={{
+              left: `${8 + i * 12}%`,
+              bottom: '-10px',
+              animationDelay: `${i * 0.9}s`,
+              animationDuration: `${6 + (i % 3)}s`
+            }}
+          ></span>
+        ))}
+      </div>
+
       {/* Animated export route: a car travels the dashed line out to a waiting ship */}
       <div className="absolute bottom-12 left-0 right-0 h-6 overflow-hidden pointer-events-none opacity-50">
         <div className="absolute top-1/2 left-0 right-[12%] border-t border-dashed border-slate-700"></div>
@@ -594,7 +667,7 @@ function LandingPage({ navigate }) {
         </div>
       </div>
       
-      <div className="z-10 flex flex-col items-center bg-[#16161f]/80 backdrop-blur-xl p-12 rounded-[2rem] shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-red-900/20 max-w-md w-full text-center transition-all hover:border-red-900/40 animate-nbj-fade-up">
+      <div className="z-10 flex flex-col items-center bg-[#16161f]/80 backdrop-blur-xl p-12 rounded-[2rem] shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-red-900/20 max-w-md w-full text-center transition-all hover:border-red-900/40 animate-nbj-fade-up animate-nbj-border-glow">
         
         <div className="mb-8 relative group w-36 h-36 flex items-center justify-center">
            <div className="absolute inset-0 bg-red-600 rounded-full blur-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
@@ -615,12 +688,15 @@ function LandingPage({ navigate }) {
         </div>
 
         <h1 className="text-3xl font-black text-white mb-1 tracking-widest uppercase animate-nbj-fade-up" style={{animationDelay: '0.1s'}}>NBJ Sales Portal</h1>
-        <p className="text-red-500 mb-10 text-xs font-bold tracking-[0.2em] uppercase animate-nbj-fade-up" style={{animationDelay: '0.2s'}}>Nobuko Japan Automotive</p>
+        <div className="relative inline-block mb-10 animate-nbj-fade-up" style={{animationDelay: '0.2s'}}>
+          <p className="text-red-500 text-xs font-bold tracking-[0.2em] uppercase">Nobuko Japan Automotive</p>
+          <div className="h-px w-full mt-2 bg-gradient-to-r from-transparent via-red-500/60 to-transparent animate-nbj-icon-pulse"></div>
+        </div>
 
         <div className="flex flex-col gap-4 w-full animate-nbj-fade-up" style={{animationDelay: '0.3s'}}>
           <button 
             onClick={() => navigate('agent')}
-            className="group relative overflow-hidden flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-gradient-to-r from-red-800 to-red-600 hover:from-red-700 hover:to-red-500 text-white font-bold transition-all shadow-lg hover:shadow-red-900/50"
+            className="group relative overflow-hidden flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-gradient-to-r from-red-800 to-red-600 hover:from-red-700 hover:to-red-500 text-white font-bold transition-all shadow-lg hover:shadow-red-900/50 hover:-translate-y-0.5"
           >
             <span className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/25 to-transparent skew-x-[-20deg] animate-nbj-shimmer"></span>
             <User size={20} className="group-hover:scale-110 transition-transform" />
@@ -629,7 +705,7 @@ function LandingPage({ navigate }) {
           
           <button 
             onClick={() => navigate('admin-login')}
-            className="group flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-[#22222d] hover:bg-[#2a2a38] border border-slate-700 hover:border-slate-500 text-slate-200 font-bold transition-all shadow-lg"
+            className="group flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-[#22222d] hover:bg-[#2a2a38] border border-slate-700 hover:border-slate-500 text-slate-200 font-bold transition-all shadow-lg hover:-translate-y-0.5"
           >
             <ShieldAlert size={20} className="text-red-500 group-hover:scale-110 transition-transform" />
             Admin Access
@@ -658,11 +734,20 @@ function AdminLogin({ navigate, showToast }) {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-6 relative overflow-hidden">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-red-950/20 rounded-full blur-[100px] pointer-events-none"></div>
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-red-950/20 rounded-full blur-[100px] pointer-events-none animate-nbj-drift"></div>
+      <div 
+        className="absolute inset-0 opacity-[0.03] pointer-events-none"
+        style={{
+          backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
+          backgroundSize: '46px 46px'
+        }}
+      ></div>
 
-      <div className="z-10 bg-[#16161f]/80 backdrop-blur-xl p-10 rounded-[2rem] shadow-2xl border border-red-900/20 max-w-sm w-full text-center">
-        <div className="mb-6 flex justify-center">
-          <div className="w-20 h-20 rounded-full bg-red-900/10 flex items-center justify-center border border-red-900/30 shadow-[0_0_30px_rgba(185,28,28,0.2)]">
+      <div className="z-10 bg-[#16161f]/80 backdrop-blur-xl p-10 rounded-[2rem] shadow-2xl border border-red-900/20 max-w-sm w-full text-center animate-nbj-fade-up animate-nbj-border-glow">
+        <div className="mb-6 flex justify-center relative w-20 h-20 mx-auto">
+          <div className="absolute inset-0 rounded-full border border-red-600/40 animate-nbj-ping-slow"></div>
+          <div className="absolute inset-0 rounded-full border border-red-900/40 animate-nbj-ping-slower"></div>
+          <div className="relative w-20 h-20 rounded-full bg-red-900/10 flex items-center justify-center border border-red-900/30 shadow-[0_0_30px_rgba(185,28,28,0.2)]">
             <Lock className="text-red-500" size={32} />
           </div>
         </div>
@@ -684,15 +769,16 @@ function AdminLogin({ navigate, showToast }) {
             <button 
               type="button"
               onClick={() => navigate('landing')}
-              className="w-1/3 bg-[#22222d] hover:bg-[#2a2a38] text-slate-300 font-bold py-3.5 rounded-xl text-sm transition-colors border border-slate-700"
+              className="w-1/3 bg-[#22222d] hover:bg-[#2a2a38] text-slate-300 font-bold py-3.5 rounded-xl text-sm transition-all border border-slate-700 hover:-translate-y-0.5"
             >
               Back
             </button>
             <button 
               type="submit"
-              className="w-2/3 bg-gradient-to-r from-red-800 to-red-600 hover:from-red-700 hover:to-red-500 text-white font-bold py-3.5 rounded-xl text-sm transition-all shadow-lg shadow-red-950/30"
+              className="w-2/3 relative overflow-hidden bg-gradient-to-r from-red-800 to-red-600 hover:from-red-700 hover:to-red-500 text-white font-bold py-3.5 rounded-xl text-sm transition-all shadow-lg shadow-red-950/30 hover:-translate-y-0.5"
             >
-              Verify
+              <span className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/25 to-transparent skew-x-[-20deg] animate-nbj-shimmer"></span>
+              <span className="relative">Verify</span>
             </button>
           </div>
         </form>
@@ -809,27 +895,30 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
 
   return (
     <div className="min-h-screen bg-[#0d0d12] pb-12 relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-96 h-96 bg-red-900/5 rounded-full blur-[100px] pointer-events-none"></div>
+      <AmbientBackground intensity="subtle" />
 
       <header className="bg-[#16161f]/80 backdrop-blur-lg border-b border-red-900/20 px-6 py-4 flex justify-between items-center sticky top-0 z-40">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full border border-red-800 bg-[#111] overflow-hidden flex items-center justify-center shadow-lg">
-             <img src="133745.png" alt="Logo" className="w-full h-full object-contain" 
-                  onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}/>
-             <span className="hidden text-red-500 font-bold text-sm">NBJ</span>
+          <div className="relative w-12 h-12">
+            <div className="absolute inset-0 rounded-full border border-red-600/30 animate-nbj-ping-slow"></div>
+            <div className="relative w-12 h-12 rounded-full border border-red-800 bg-[#111] overflow-hidden flex items-center justify-center shadow-lg">
+               <img src="133745.png" alt="Logo" className="w-full h-full object-contain" 
+                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}/>
+               <span className="hidden text-red-500 font-bold text-sm">NBJ</span>
+            </div>
           </div>
           <div>
             <h2 className="text-xl font-bold text-white tracking-wide">NBJ Agent Portal</h2>
             <p className="text-[10px] text-red-400 font-bold tracking-widest uppercase">Secure Entry System</p>
           </div>
         </div>
-        <button onClick={() => navigate('landing')} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-bold bg-[#1c1c25] px-4 py-2 rounded-lg border border-slate-800 hover:border-slate-600">
+        <button onClick={() => navigate('landing')} className="flex items-center gap-2 text-slate-400 hover:text-white transition-all text-sm font-bold bg-[#1c1c25] px-4 py-2 rounded-lg border border-slate-800 hover:border-slate-600 hover:-translate-y-0.5">
           <LogOut size={16} /> Exit
         </button>
       </header>
 
       <main className="max-w-3xl mx-auto mt-10 px-4 relative z-10">
-        <div className="bg-[#16161f] rounded-3xl shadow-2xl border border-slate-800/60 p-8 sm:p-10">
+        <div className="bg-[#16161f] rounded-3xl shadow-2xl border border-slate-800/60 p-8 sm:p-10 animate-nbj-fade-up">
           <div className="mb-8 border-b border-slate-800 pb-6">
             <h3 className="text-2xl font-bold text-white flex items-center gap-3">
               <div className="p-2 bg-red-900/20 rounded-lg text-red-500"><ListPlus size={24} /></div>
@@ -909,10 +998,11 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
 
             <button 
               type="submit"
-              className="w-full bg-gradient-to-r from-red-800 to-red-600 hover:from-red-700 hover:to-red-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_10px_30px_rgba(185,28,28,0.3)] hover:shadow-[0_10px_40px_rgba(185,28,28,0.5)] scale-100 hover:scale-[1.01]"
+              className="group relative overflow-hidden w-full bg-gradient-to-r from-red-800 to-red-600 hover:from-red-700 hover:to-red-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_10px_30px_rgba(185,28,28,0.3)] hover:shadow-[0_10px_40px_rgba(185,28,28,0.5)] scale-100 hover:scale-[1.01]"
             >
-              <CheckCircle size={22} />
-              Submit Sales & Generate Receipt
+              <span className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-20deg] animate-nbj-shimmer"></span>
+              <CheckCircle size={22} className="relative" />
+              <span className="relative">Submit Sales &amp; Generate Receipt</span>
             </button>
           </form>
         </div>
@@ -1086,7 +1176,8 @@ function AdminPanel({
   }).sort((a, b) => b.valid - a.valid);
 
   return (
-    <div className="min-h-screen bg-[#0d0d12] flex flex-col relative">
+    <div className="min-h-screen bg-[#0d0d12] flex flex-col relative overflow-hidden">
+      <AmbientBackground intensity="subtle" />
       
       {/* Chassis Viewer Modal */}
       {selectedChassisModal && (
@@ -1155,12 +1246,12 @@ function AdminPanel({
         </button>
       </header>
 
-      <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-6 max-w-7xl mx-auto w-full relative z-10">
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-[#16161f] rounded-2xl border border-slate-800/80 p-6 flex items-center gap-6 shadow-xl relative overflow-hidden group">
+          <div className="bg-[#16161f] rounded-2xl border border-slate-800/80 p-6 flex items-center gap-6 shadow-xl relative overflow-hidden group transition-all hover:-translate-y-1 hover:border-green-900/50">
             <div className="absolute -right-10 -top-10 w-32 h-32 bg-green-500/5 rounded-full blur-2xl group-hover:bg-green-500/10 transition-colors"></div>
-            <div className="w-16 h-16 rounded-2xl bg-green-950/40 flex items-center justify-center border border-green-900/50 shadow-inner">
+            <div className="w-16 h-16 rounded-2xl bg-green-950/40 flex items-center justify-center border border-green-900/50 shadow-inner animate-nbj-icon-pulse">
               <Database className="text-green-500" size={32} />
             </div>
             <div className="relative z-10">
@@ -1169,9 +1260,9 @@ function AdminPanel({
             </div>
           </div>
 
-          <div className="bg-[#16161f] rounded-2xl border border-slate-800/80 p-6 flex items-center gap-6 shadow-xl relative overflow-hidden group">
+          <div className="bg-[#16161f] rounded-2xl border border-slate-800/80 p-6 flex items-center gap-6 shadow-xl relative overflow-hidden group transition-all hover:-translate-y-1 hover:border-red-900/50">
             <div className="absolute -right-10 -top-10 w-32 h-32 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/10 transition-colors"></div>
-            <div className="w-16 h-16 rounded-2xl bg-red-950/40 flex items-center justify-center border border-red-900/50 shadow-inner">
+            <div className="w-16 h-16 rounded-2xl bg-red-950/40 flex items-center justify-center border border-red-900/50 shadow-inner animate-nbj-icon-pulse">
               <AlertTriangle className="text-red-500" size={32} />
             </div>
             <div className="relative z-10">
@@ -1183,20 +1274,20 @@ function AdminPanel({
 
         {/* Tabs */}
         <div className="flex gap-2 mb-8 bg-[#16161f] p-1.5 rounded-xl border border-slate-800 overflow-x-auto w-max shadow-lg">
-          <button onClick={() => setActiveTab('registry')} className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'registry' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
+          <button onClick={() => setActiveTab('registry')} className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'registry' ? 'bg-slate-800 text-white shadow scale-[1.03]' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
             <FileText size={18} /> Sales Registry
           </button>
           
-          <button onClick={() => setActiveTab('flags')} className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'flags' ? 'bg-red-950/50 border border-red-900/50 text-red-100 shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
+          <button onClick={() => setActiveTab('flags')} className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'flags' ? 'bg-red-950/50 border border-red-900/50 text-red-100 shadow scale-[1.03]' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
             <ShieldAlert size={18} className={activeTab === 'flags' ? 'text-red-400' : ''} /> Flag Reports
             {totalFlags > 0 && <span className="bg-red-600 text-white text-[11px] px-2 py-0.5 rounded-md ml-1 shadow-sm">{totalFlags}</span>}
           </button>
           
-          <button onClick={() => setActiveTab('agents')} className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'agents' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
+          <button onClick={() => setActiveTab('agents')} className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'agents' ? 'bg-slate-800 text-white shadow scale-[1.03]' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
             <Users size={18} /> Manage Agents
           </button>
 
-          <button onClick={() => setActiveTab('analytics')} className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'analytics' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
+          <button onClick={() => setActiveTab('analytics')} className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'analytics' ? 'bg-slate-800 text-white shadow scale-[1.03]' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
             <TrendingUp size={18} /> Performance Stats
           </button>
         </div>
@@ -1489,18 +1580,18 @@ function AdminPanel({
             
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
               {agentStats.map((stat, idx) => (
-                <div key={idx} className="bg-[#0d0d12] border border-slate-700/80 rounded-2xl p-6 hover:border-red-900/50 transition-all relative overflow-hidden group shadow-lg hover:shadow-red-900/20">
+                <div key={idx} className="bg-[#0d0d12] border border-slate-700/80 rounded-2xl p-6 hover:border-red-900/50 hover:-translate-y-1 transition-all relative overflow-hidden group shadow-lg hover:shadow-red-900/20">
                   
-                  {/* Background Flag Layer */}
+                  {/* Background Flag Layer — brighter + saturated so the flag actually reads at a glance */}
                   {stat.market && (
                     <>
                       <img 
                         src={getFlagSrc(stat.market)} 
                         alt={stat.market} 
-                        className="absolute inset-0 w-full h-full object-cover opacity-[0.12] group-hover:opacity-[0.25] transition-opacity duration-500 pointer-events-none scale-105 group-hover:scale-100" 
+                        className="absolute inset-0 w-full h-full object-cover opacity-[0.30] group-hover:opacity-[0.45] transition-opacity duration-500 pointer-events-none scale-105 group-hover:scale-100 saturate-150 contrast-110" 
                       />
                       {/* Gradient Overlay for Text Readability */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-[#0d0d12] via-[#0d0d12]/80 to-transparent pointer-events-none"></div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#0d0d12] via-[#0d0d12]/75 to-[#0d0d12]/20 pointer-events-none"></div>
                     </>
                   )}
 
@@ -1512,8 +1603,9 @@ function AdminPanel({
                       <User size={18} />
                     </div>
                     {stat.market && (
-                       <div className="bg-[#0d0d12]/60 backdrop-blur-md px-2.5 py-1 rounded border border-slate-700/50 shadow-sm">
-                         <span className="text-[10px] uppercase font-black text-slate-300 tracking-widest">{stat.market}</span>
+                       <div className="flex items-center gap-1.5 bg-[#0d0d12]/60 backdrop-blur-md pl-1.5 pr-2.5 py-1 rounded border border-slate-700/50 shadow-sm">
+                         <img src={getFlagSrc(stat.market)} alt={stat.market} className="w-5 h-3.5 object-cover rounded-sm border border-slate-600/70 shadow-sm" />
+                         <span className="text-[10px] uppercase font-black text-slate-200 tracking-widest">{stat.market}</span>
                        </div>
                     )}
                   </div>
@@ -1526,11 +1618,11 @@ function AdminPanel({
                   <div className="flex justify-between items-end bg-[#0d0d12]/70 backdrop-blur-md p-3.5 rounded-xl border border-slate-700/50 relative z-10 shadow-inner">
                     <div>
                       <p className="text-[10px] text-slate-400 mb-1 uppercase font-bold tracking-wider">Valid Sales</p>
-                      <p className="text-2xl font-black text-emerald-400 drop-shadow-sm">{stat.valid}</p>
+                      <p className="text-2xl font-black text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]">{stat.valid}</p>
                     </div>
                     <div className="text-right border-l border-slate-700/50 pl-4">
                       <p className="text-[10px] text-slate-400 mb-1 uppercase font-bold tracking-wider">Duplicates</p>
-                      <p className="text-xl font-black text-red-400 drop-shadow-sm">{stat.flags}</p>
+                      <p className={`text-xl font-black drop-shadow-[0_0_8px_rgba(248,113,113,0.55)] ${stat.flags > 0 ? 'text-red-400' : 'text-slate-600'}`}>{stat.flags}</p>
                     </div>
                   </div>
                 </div>
