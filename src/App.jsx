@@ -1020,7 +1020,7 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                 <input 
-                  type="password"
+                  type="text"
                   value={confirmName}
                   onChange={(e) => setConfirmName(e.target.value)}
                   placeholder="Type your name exactly as selected above"
