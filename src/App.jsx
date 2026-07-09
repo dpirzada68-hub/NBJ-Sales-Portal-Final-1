@@ -19,7 +19,9 @@ import {
   X,
   CalendarDays,
   FileDown,
-  Globe
+  Globe,
+  Car,
+  Ship
 } from 'lucide-react';
 
 // Helper function to get correct flag image path based on market
@@ -55,6 +57,58 @@ const formatSaleMonth = (saleMonth) => {
   if (!saleMonth) return null;
   return new Date(saleMonth + "-01").toLocaleString('en-US', { month: 'long', year: 'numeric' });
 };
+
+// Shared keyframe animations + custom classes, rendered on every screen
+// (including the pre-load gate, which returns before the main JSX tree mounts)
+function GlobalStyles() {
+  return (
+    <style dangerouslySetInnerHTML={{__html: `
+      .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: #16161f; border-radius: 8px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 8px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+      @keyframes nbj-drift {
+        0%   { transform: translate(0, 0) scale(1); }
+        50%  { transform: translate(6%, 8%) scale(1.12); }
+        100% { transform: translate(0, 0) scale(1); }
+      }
+      .animate-nbj-drift { animation: nbj-drift 14s ease-in-out infinite; }
+      .animate-nbj-drift-reverse { animation: nbj-drift 18s ease-in-out infinite reverse; }
+
+      @keyframes nbj-ping-slow {
+        0%   { transform: scale(1); opacity: 0.55; }
+        100% { transform: scale(1.7); opacity: 0; }
+      }
+      .animate-nbj-ping-slow { animation: nbj-ping-slow 3s cubic-bezier(0,0,0.2,1) infinite; }
+      .animate-nbj-ping-slower { animation: nbj-ping-slow 3s cubic-bezier(0,0,0.2,1) infinite; animation-delay: 0.9s; }
+
+      @keyframes nbj-fade-up {
+        0%   { opacity: 0; transform: translateY(18px); }
+        100% { opacity: 1; transform: translateY(0); }
+      }
+      .animate-nbj-fade-up { animation: nbj-fade-up 0.8s cubic-bezier(0.16,1,0.3,1) both; }
+
+      @keyframes nbj-route {
+        0%   { left: -8%; }
+        100% { left: 104%; }
+      }
+      .animate-nbj-route { animation: nbj-route 7s linear infinite; }
+
+      @keyframes nbj-bounce-dot {
+        0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+        40%           { transform: translateY(-5px); opacity: 1; }
+      }
+      .animate-nbj-bounce-dot { animation: nbj-bounce-dot 1.2s ease-in-out infinite; }
+
+      @keyframes nbj-shimmer {
+        0%   { transform: translateX(-120%); }
+        100% { transform: translateX(120%); }
+      }
+      .animate-nbj-shimmer { animation: nbj-shimmer 2.5s ease-in-out infinite; }
+    `}} />
+  );
+}
 
 export default function App() {
   // Global State — backed by a shared Neon Postgres database via /api/kv
@@ -368,9 +422,31 @@ export default function App() {
 
   if (!dataLoaded) {
     return (
-      <div className="min-h-screen bg-[#0d0d12] flex items-center justify-center text-slate-400 font-sans">
-        Loading...
-      </div>
+      <>
+        <GlobalStyles />
+        <div className="min-h-screen bg-[#0d0d12] flex flex-col items-center justify-center relative overflow-hidden font-sans">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-red-900/15 rounded-full blur-[120px] pointer-events-none animate-nbj-drift"></div>
+
+          <div className="relative mb-8 w-24 h-24 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full border border-red-600/40 animate-nbj-ping-slow"></div>
+            <div className="absolute inset-0 rounded-full border border-red-900/40 animate-nbj-ping-slower"></div>
+            <div className="relative w-20 h-20 rounded-full bg-[#111115] border border-red-900/50 flex items-center justify-center shadow-[0_0_40px_rgba(185,28,28,0.3)]">
+              <span className="text-2xl font-black text-red-600 tracking-tighter">NJ</span>
+            </div>
+          </div>
+
+          <h1 className="text-white font-black tracking-[0.3em] uppercase text-sm mb-4 z-10">NBJ Sales Portal</h1>
+
+          <div className="flex items-center gap-1.5 text-slate-500 text-[10px] font-bold uppercase tracking-widest z-10">
+            <span>Loading</span>
+            <span className="flex gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-nbj-bounce-dot" style={{animationDelay: '0ms'}}></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-nbj-bounce-dot" style={{animationDelay: '150ms'}}></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-nbj-bounce-dot" style={{animationDelay: '300ms'}}></span>
+            </span>
+          </div>
+        </div>
+      </>
     );
   }
 
@@ -496,12 +572,34 @@ export default function App() {
 function LandingPage({ navigate }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-6 relative overflow-hidden">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-red-900/15 rounded-full blur-[120px] pointer-events-none"></div>
+      {/* Ambient drifting glows */}
+      <div className="absolute top-1/3 left-1/4 w-[650px] h-[650px] bg-red-900/20 rounded-full blur-[130px] pointer-events-none animate-nbj-drift"></div>
+      <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-red-700/10 rounded-full blur-[110px] pointer-events-none animate-nbj-drift-reverse"></div>
+
+      {/* Faint blueprint grid, evokes engineering/export precision */}
+      <div 
+        className="absolute inset-0 opacity-[0.04] pointer-events-none"
+        style={{
+          backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
+          backgroundSize: '46px 46px'
+        }}
+      ></div>
+
+      {/* Animated export route: a car travels the dashed line out to a waiting ship */}
+      <div className="absolute bottom-12 left-0 right-0 h-6 overflow-hidden pointer-events-none opacity-50">
+        <div className="absolute top-1/2 left-0 right-[12%] border-t border-dashed border-slate-700"></div>
+        <Ship size={20} className="absolute right-[4%] top-1/2 -translate-y-1/2 text-slate-500" />
+        <div className="absolute top-1/2 -translate-y-1/2 animate-nbj-route text-red-500">
+          <Car size={18} />
+        </div>
+      </div>
       
-      <div className="z-10 flex flex-col items-center bg-[#16161f]/80 backdrop-blur-xl p-12 rounded-[2rem] shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-red-900/20 max-w-md w-full text-center transition-all hover:border-red-900/40">
+      <div className="z-10 flex flex-col items-center bg-[#16161f]/80 backdrop-blur-xl p-12 rounded-[2rem] shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-red-900/20 max-w-md w-full text-center transition-all hover:border-red-900/40 animate-nbj-fade-up">
         
-        <div className="mb-8 relative group">
+        <div className="mb-8 relative group w-36 h-36 flex items-center justify-center">
            <div className="absolute inset-0 bg-red-600 rounded-full blur-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
+           <div className="absolute inset-0 rounded-full border border-red-600/40 animate-nbj-ping-slow"></div>
+           <div className="absolute inset-0 rounded-full border border-red-900/40 animate-nbj-ping-slower"></div>
            <img 
               src="133745.png" 
               alt="NBJ Logo" 
@@ -516,14 +614,15 @@ function LandingPage({ navigate }) {
            </div>
         </div>
 
-        <h1 className="text-3xl font-black text-white mb-1 tracking-widest uppercase">NBJ Sales Portal</h1>
-        <p className="text-red-500 mb-10 text-xs font-bold tracking-[0.2em] uppercase">Nobuko Japan Automotive</p>
+        <h1 className="text-3xl font-black text-white mb-1 tracking-widest uppercase animate-nbj-fade-up" style={{animationDelay: '0.1s'}}>NBJ Sales Portal</h1>
+        <p className="text-red-500 mb-10 text-xs font-bold tracking-[0.2em] uppercase animate-nbj-fade-up" style={{animationDelay: '0.2s'}}>Nobuko Japan Automotive</p>
 
-        <div className="flex flex-col gap-4 w-full">
+        <div className="flex flex-col gap-4 w-full animate-nbj-fade-up" style={{animationDelay: '0.3s'}}>
           <button 
             onClick={() => navigate('agent')}
-            className="group flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-gradient-to-r from-red-800 to-red-600 hover:from-red-700 hover:to-red-500 text-white font-bold transition-all shadow-lg hover:shadow-red-900/50"
+            className="group relative overflow-hidden flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-gradient-to-r from-red-800 to-red-600 hover:from-red-700 hover:to-red-500 text-white font-bold transition-all shadow-lg hover:shadow-red-900/50"
           >
+            <span className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/25 to-transparent skew-x-[-20deg] animate-nbj-shimmer"></span>
             <User size={20} className="group-hover:scale-110 transition-transform" />
             Enter Agent Portal
           </button>
@@ -579,7 +678,7 @@ function AdminLogin({ navigate, showToast }) {
             placeholder="Enter Password..."
             className="w-full bg-[#0d0d12] border border-slate-700 rounded-xl px-4 py-4 text-white focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all text-center placeholder:text-slate-600 shadow-inner"
           />
-          <p className="text-slate-500 text-[10px] italic">Hint: ...nbj123</p>
+          <p className="text-slate-500 text-[10px] italic">Authorized personnel only.</p>
 
           <div className="flex gap-3 pt-4">
             <button 
@@ -1441,12 +1540,7 @@ function AdminPanel({
         )}
       </main>
       
-      <style dangerouslySetInnerHTML={{__html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #16161f; border-radius: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
-      `}} />
+      <GlobalStyles />
     </div>
   );
 }
