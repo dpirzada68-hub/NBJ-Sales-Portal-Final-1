@@ -19,9 +19,7 @@ import {
   X,
   CalendarDays,
   FileDown,
-  Globe,
-  Car,
-  Ship
+  Globe
 } from 'lucide-react';
 
 // Helper function to get correct flag image path based on market
@@ -32,11 +30,28 @@ const getFlagSrc = (market) => {
   return null;
 };
 
-// Helper for loading images asynchronously for jsPDF
+// Loads an image and normalizes it to a PNG data URL via canvas.
+// jsPDF's addImage() can silently fail to embed certain JPEG encodings
+// (progressive JPEGs, CMYK color profiles) even when the image displays
+// fine everywhere else in the browser — re-rendering through canvas and
+// exporting as PNG sidesteps that regardless of the original file's encoding.
 const loadImageForPDF = (url) => {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => resolve(img);
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (err) {
+        // Canvas got tainted or another draw error occurred
+        resolve(null);
+      }
+    };
     img.onerror = () => resolve(null);
     img.src = url;
   });
@@ -88,12 +103,6 @@ function GlobalStyles() {
         100% { opacity: 1; transform: translateY(0); }
       }
       .animate-nbj-fade-up { animation: nbj-fade-up 0.8s cubic-bezier(0.16,1,0.3,1) both; }
-
-      @keyframes nbj-route {
-        0%   { left: -8%; }
-        100% { left: 104%; }
-      }
-      .animate-nbj-route { animation: nbj-route 7s linear infinite; }
 
       @keyframes nbj-bounce-dot {
         0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
@@ -291,8 +300,7 @@ export default function App() {
         }
       }
       if (img) {
-        const format = flagUrl.toLowerCase().endsWith('.png') ? 'PNG' : 'JPEG';
-        doc.addImage(img, format, 175, 12, 20, 13);
+        doc.addImage(img, 'PNG', 175, 12, 20, 13);
       } else {
         // Flag image unavailable for any reason — draw a neutral badge so the
         // team label never ends up printing on an empty/broken spot.
@@ -657,15 +665,6 @@ function LandingPage({ navigate }) {
           ></span>
         ))}
       </div>
-
-      {/* Animated export route: a car travels the dashed line out to a waiting ship */}
-      <div className="absolute bottom-12 left-0 right-0 h-6 overflow-hidden pointer-events-none opacity-50">
-        <div className="absolute top-1/2 left-0 right-[12%] border-t border-dashed border-slate-700"></div>
-        <Ship size={20} className="absolute right-[4%] top-1/2 -translate-y-1/2 text-slate-500" />
-        <div className="absolute top-1/2 -translate-y-1/2 animate-nbj-route text-red-500">
-          <Car size={18} />
-        </div>
-      </div>
       
       <div className="z-10 flex flex-col items-center bg-[#16161f]/80 backdrop-blur-xl p-12 rounded-[2rem] shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-red-900/20 max-w-md w-full text-center transition-all hover:border-red-900/40 animate-nbj-fade-up animate-nbj-border-glow">
         
@@ -792,15 +791,31 @@ function AdminLogin({ navigate, showToast }) {
    ========================================= */
 function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesData, setFlaggedData, showToast, agents, setActiveReceipt }) {
   const [agentName, setAgentName] = useState('');
+  const [confirmName, setConfirmName] = useState('');
   const [saleCount, setSaleCount] = useState('');
   const [chassisInput, setChassisInput] = useState('');
   const [saleMonth, setSaleMonth] = useState('');
+
+  // If the agent switches their selected name, any previously typed
+  // confirmation no longer applies — force them to re-type it.
+  const handleAgentNameChange = (e) => {
+    setAgentName(e.target.value);
+    setConfirmName('');
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     
     if (!agentName) {
       showToast('Please select your Agent Name.', 'error');
+      return;
+    }
+    if (!confirmName.trim()) {
+      showToast('Please type your name to confirm and authorize this submission.', 'error');
+      return;
+    }
+    if (confirmName.trim().toLowerCase() !== agentName.trim().toLowerCase()) {
+      showToast('Name confirmation does not match the selected Agent Name.', 'error');
       return;
     }
     if (!saleMonth) {
@@ -890,6 +905,7 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
     if (validCodes.length > 0) {
       setChassisInput('');
       setSaleCount('');
+      setConfirmName('');
     }
   };
 
@@ -935,7 +951,7 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                   <select 
                     value={agentName}
-                    onChange={(e) => setAgentName(e.target.value)}
+                    onChange={handleAgentNameChange}
                     className="w-full bg-[#0d0d12] border border-slate-700 rounded-xl pl-12 pr-4 py-3.5 text-white focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all cursor-pointer appearance-none shadow-inner"
                   >
                     <option value="" disabled>Select your name</option>
@@ -994,6 +1010,26 @@ function AgentPortal({ navigate, chassisRegistry, setChassisRegistry, setSalesDa
                 rows="8"
                 className="w-full bg-[#0d0d12] border border-slate-700 rounded-xl px-5 py-4 text-white focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all placeholder:text-slate-600 font-mono text-sm resize-y shadow-inner leading-relaxed tracking-wider uppercase"
               ></textarea>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-slate-800">
+              <label className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <Lock size={14} className="text-red-500" />
+                Confirm Identity to Authorize
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                <input 
+                  type="password"
+                  value={confirmName}
+                  onChange={(e) => setConfirmName(e.target.value)}
+                  placeholder="Type your name exactly as selected above"
+                  autoComplete="off"
+                  disabled={!agentName}
+                  className="w-full bg-[#0d0d12] border border-slate-700 rounded-xl pl-12 pr-4 py-3.5 text-white focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all placeholder:text-slate-600 shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 italic">Acts as your signature — must exactly match the Agent Name selected above.</p>
             </div>
 
             <button 
